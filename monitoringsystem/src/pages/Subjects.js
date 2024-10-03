@@ -7,10 +7,11 @@ function Subjects() {
   const [dataList, setDataList] = useState([]); // 각 URL에 대한 데이터를 저장하는 상태
   const [newUrl, setNewUrl] = useState(''); // 새로운 URL을 입력받는 상태
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(''); // 오류 메시지 상태
 
   // 미리 정의된 치료법 키워드 리스트
   const treatmentKeywords = [
-    '심장 수술', '관상동맥 우회술', '간암 치료', '방사선 치료', 
+    '심장 수술', '관상동맥 우회술', '간암 치료', '방사선 치료',
     '내시경 치료', '척추 교정', '치과 임플란트', '백내장 수술', '추나요법', '치료법', '호흡기'
   ];
 
@@ -22,14 +23,46 @@ function Subjects() {
     }
   };
 
+  // robots.txt 파일 확인 함수
+  const checkRobotsTxt = async (url) => {
+    try {
+      const parsedUrl = new URL(url);
+      const robotsUrl = `${parsedUrl.origin}/robots.txt`; // 사이트의 robots.txt 파일 경로
+      const response = await axios.get(robotsUrl);
+      const robotsTxt = response.data;
+
+      // Disallow된 경로가 있는지 확인
+      const disallowedPaths = robotsTxt
+        .split('\n')
+        .filter(line => line.startsWith('Disallow:'))
+        .map(line => line.replace('Disallow:', '').trim());
+
+      // 만약 크롤링하려는 경로가 Disallow된 경로에 포함되어 있으면 false 반환
+      return disallowedPaths.every(path => !url.includes(path));
+    } catch (error) {
+      console.error('Error fetching robots.txt:', error);
+      // robots.txt 파일을 못 찾는 경우 (404 등), 크롤링 허용으로 간주
+      return true;
+    }
+  };
+
   // 크롤링 데이터 요청 및 키워드 비교 함수
   const fetchData = async (url, apiPath, index) => {
     setLoading(true);
+    setError('');
     try {
+      const canCrawl = await checkRobotsTxt(url); // robots.txt 확인
+
+      if (!canCrawl) {
+        setError(`해당 사이트(${url})는 robots.txt에 의해 크롤링이 허용되지 않습니다.`);
+        setLoading(false);
+        return;
+      }
+
       const response = await axios.get(`http://localhost:8080/api/${apiPath}`, {
         params: { url } // URL에 대한 데이터를 요청
       });
-      
+
       const crawledData = response.data;
 
       // 크롤링된 데이터를 콘솔에 출력
@@ -46,6 +79,7 @@ function Subjects() {
       setDataList(newDataList);
     } catch (error) {
       console.error('Error during crawling:', error);
+      setError('크롤링 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -62,6 +96,8 @@ function Subjects() {
         />
         <button onClick={addUrl}>사이트 추가</button>
       </div>
+
+      {error && <p style={{ color: 'red' }}>{error}</p>} {/* 오류 메시지 출력 */}
 
       {/* 추가된 URL들에 대한 섹션 */}
       {urls.map((url, index) => (
